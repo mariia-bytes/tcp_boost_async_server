@@ -124,8 +124,16 @@ public:
 
 int main(int argc, char* argv[]) {
     try {
-        // default port
-        int port = argc > 1? std::stoi(argv[1]) : 55000;
+        // determine the port from command-line argument or use default
+        unsigned short port = 55000; // default port
+        if (argc > 1) {
+            try {
+                port = static_cast<unsigned short>(std::stoi(argv[1]));
+            } catch (const std::exception& e) {
+                std::cerr << "Invalid port provided. Using default port 55000" 
+                          << std::endl;
+            }
+        }
 
         boost::asio::io_context io_context;
         Server server(io_context, port);
@@ -138,8 +146,10 @@ int main(int argc, char* argv[]) {
         });
 
         io_context.run();
-    } catch (std::exception& exception) {
-        std::cerr << "Exception: " << exception.what() << std::endl;
+    
+    } catch (std::exception& e) {
+        std::cerr << "Exception: " << e.what() << std::endl;
     }
+
     return 0;
 }

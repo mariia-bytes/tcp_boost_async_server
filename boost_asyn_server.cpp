@@ -41,14 +41,14 @@ public:
                     std::cerr << "Write error: " << err.message() << std::endl;
                 }
             });
-        /*
+        
         connection_socket.async_read_some(
             boost::asio::buffer(data, max_length),
             boost::bind(&Connection_Handler::handle_read,
                         shared_from_this(),
                         boost::placeholders::_1,
                         boost::placeholders::_2));
-
+        /*
         boost::asio::async_write(
             connection_socket,
             boost::asio::buffer(message),
@@ -58,16 +58,28 @@ public:
                         boost::placeholders::_2));
         */
     }
-    /*
+    
     void handle_read(const boost::system::error_code& err, size_t bytes_transferred) {
         if (!err) {
-            std::cout << "Server sent Hello message!\n" << std::endl;
+            // Null-terminate the received data to handle it as a string
+            data[bytes_transferred] = '\0';
+            std::cout << "Received message: " << data << std::endl;
+
+            // Clear the buffer to remove any leftover data
+            std::fill(std::begin(data), std::end(data), 0);
+        
+            // Continue reading more data from the client
+            connection_socket.async_read_some(boost::asio::buffer(data, max_length),
+                                              boost::bind(&Connection_Handler::handle_read,
+                                                          shared_from_this(),
+                                                          boost::placeholders::_1,
+                                                          boost::placeholders::_2));
         } else {
             std::cerr << "Read error: " << err.message() << std::endl;
             connection_socket.close();
         }
     }
-    */
+    
 
     void handle_write(const boost::system::error_code& err, size_t bytes_transferred) {
         if (!err) {

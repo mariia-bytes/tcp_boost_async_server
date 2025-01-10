@@ -100,11 +100,13 @@ private:
     void start_accept() {
         auto& io_context = static_cast<boost::asio::io_context&>(server_acceptor.get_executor().context());
 
-    Connection_Handler::pointer connection = Connection_Handler::create(io_context);
+        Connection_Handler::pointer connection = Connection_Handler::create(io_context);
 
         server_acceptor.async_accept(connection->socket(),
                                     boost::bind(&Server::handle_accept, this, connection,
                                                 boost::asio::placeholders::error));
+
+        std::cout << "\nWaiting for clients connection..." << std::endl;
     }
 
 public:
@@ -123,18 +125,19 @@ public:
 
 
 int main(int argc, char* argv[]) {
-    try {
-        // determine the port from command-line argument or use default
-        unsigned short port = 55000; // default port
-        if (argc > 1) {
-            try {
-                port = static_cast<unsigned short>(std::stoi(argv[1]));
-            } catch (const std::exception& e) {
-                std::cerr << "Invalid port provided. Using default port 55000" 
-                          << std::endl;
-            }
+    // determine the port from command-line argument or use default
+    unsigned short port = 55000; // default port
+    if (argc > 1) {
+        try {
+            port = static_cast<unsigned short>(std::stoi(argv[1]));
+        } catch (const std::exception& e) {
+            std::cerr << "Invalid port provided. Using default port 55000" 
+                      << std::endl;
         }
-
+    }
+    
+    
+    try {
         boost::asio::io_context io_context;
         Server server(io_context, port);
 

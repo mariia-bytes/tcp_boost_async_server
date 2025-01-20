@@ -2,6 +2,11 @@
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
 #include <boost/enable_shared_from_this.hpp>
+// #include <boost/asio/thread_pool.hpp>
+#include <thread>
+#include <algorithm>
+
+unsigned short port = 55000; // default port
 
 using namespace boost::asio;
 using ip::tcp;
@@ -30,15 +35,17 @@ public:
     }
 
     void start() {
-
+        // capture shared ownership of the handler
         auto self = shared_from_this();
+
+        // send a message to the client asynchronously
         connection_socket.async_write_some(
             boost::asio::buffer(message),
             [self](const boost::system::error_code& err, std::size_t bytes_transferred) {
                 if (!err) {
-                    std::cout << "\nMessage sent to client: " << self->message << std::endl;
+                    std::cout << "\nMessage sent to client: " << self->message << "\n";
                 } else {
-                    std::cerr << "Write error: " << err.message() << std::endl;
+                    std::cerr << "Write error: " << err.message() << "\n";
                 }
             });
         
@@ -48,7 +55,7 @@ public:
                         shared_from_this(),
                         boost::placeholders::_1,
                         boost::placeholders::_2));
-        /*
+        
         boost::asio::async_write(
             connection_socket,
             boost::asio::buffer(message),
@@ -56,14 +63,17 @@ public:
                         shared_from_this(),
                         boost::placeholders::_1,
                         boost::placeholders::_2));
-        */
+        
     }
     
     void handle_read(const boost::system::error_code& err, size_t bytes_transferred) {
         if (!err) {
             // Null-terminate the received data to handle it as a string
-            data[bytes_transferred] = '\0';
-            std::cout << "Received message: " << data << std::endl;
+            // data[bytes_transferred] = '\0';
+            if (bytes_transferred < max_length) {
+                data[bytes_transferred] = '\0';
+            }
+            std::cout << "Received message: " << data << "\n";
 
             // Clear the buffer to remove any leftover data
             std::fill(std::begin(data), std::end(data), 0);
@@ -75,7 +85,7 @@ public:
                                                           boost::placeholders::_1,
                                                           boost::placeholders::_2));
         } else {
-            std::cerr << "Read error: " << err.message() << std::endl;
+            std::cerr << "Read error: " << err.message() << "\n";
             connection_socket.close();
         }
     }
@@ -83,9 +93,9 @@ public:
 
     void handle_write(const boost::system::error_code& err, size_t bytes_transferred) {
         if (!err) {
-            std::cout << "\nServer sent: " << message << std::endl;
+            std::cout << "\nServer sent: " << message << "\n";
         } else {
-            std::cerr << "\nWrite error: " << err.message() << std::endl;
+            std::cerr << "\nWrite error: " << err.message() << "\n";
             connection_socket.close();
         }
     }
@@ -99,14 +109,14 @@ private:
     
     void start_accept() {
         auto& io_context = static_cast<boost::asio::io_context&>(server_acceptor.get_executor().context());
-
+        
         Connection_Handler::pointer connection = Connection_Handler::create(io_context);
 
         server_acceptor.async_accept(connection->socket(),
                                     boost::bind(&Server::handle_accept, this, connection,
                                                 boost::asio::placeholders::error));
 
-        std::cout << "\nWaiting for clients connection..." << std::endl;
+        std::cout << "\nWaiting for a client to connect on" << port << "...\n";
     }
 
 public:
@@ -126,19 +136,26 @@ public:
 
 int main(int argc, char* argv[]) {
     // determine the port from command-line argument or use default
-    unsigned short port = 55000; // default port
+    
     if (argc > 1) {
         try {
             port = static_cast<unsigned short>(std::stoi(argv[1]));
         } catch (const std::exception& e) {
-            std::cerr << "Invalid port provided. Using default port 55000" 
-                      << std::endl;
+            std::cerr << "Invalid port provided. Using default port 55000\n";
         }
     }
     
     
     try {
         boost::asio::io_context io_context;
+
+        // create a thread pool
+        unsigned int num_threads = std::max(1u, std::thread::hardware_concurrency());
+        std::vector<std::thread> thread_pool;
+        
+        //boost::asio::thread_pool thread_pool(num_threads);
+
+        // create and start the server
         Server server(io_context, port);
 
         // handling signal for graceful shutdown
@@ -148,7 +165,17 @@ int main(int argc, char* argv[]) {
             io_context.stop();
         });
 
-        io_context.run();
+        // post work to the thread pool
+        for (unsigned int i = 0; i < num_threads; i++) {
+            thread_pool.emplace_back([&io_context]() { io_context.run(); });
+            
+            // boost::asio::post(thread_pool, [&io_context]() { io_context.run(); });
+        }
+
+        for (auto& thread : thread_pool) {
+            thread.join();
+        }
+        // thread_pool.join();
     
     } catch (std::exception& e) {
         std::cerr << "Exception: " << e.what() << std::endl;

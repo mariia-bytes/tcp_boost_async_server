@@ -18,8 +18,7 @@ class Connection_Handler : public boost::enable_shared_from_this<Connection_Hand
 private: 
     tcp::socket connection_socket;
     std::string message = "Hello from Server!\n";
-    enum { max_length = 1024 };
-    char data[max_length];
+    boost::asio::streambuf read_buffer;
 
 public:
     typedef boost::shared_ptr<Connection_Handler> pointer;
@@ -41,7 +40,7 @@ public:
         // capture shared ownership of the handler
         auto self = shared_from_this();
 
-        // send a message to the client asynchronously
+        // send an initial message
         connection_socket.async_write_some(
             boost::asio::buffer(message),
             [self](const boost::system::error_code& err, std::size_t bytes_transferred) {
@@ -52,57 +51,38 @@ public:
                 }
             });
         
-        // read data from the client asynchronously
-        connection_socket.async_read_some(
-            boost::asio::buffer(data, max_length),
+        do_read();
+    }
+    
+
+private:
+    void do_read() {
+        // capture shared ownership of the handler
+        auto self = shared_from_this();
+
+        boost::asio::async_read_until(
+            connection_socket,
+            read_buffer,
+            '\n',
             [self](const boost::system::error_code& err, std::size_t bytes_transferred) {
-                if (!err) {
-                    if (bytes_transferred < max_length) {
-                        self->data[bytes_transferred] = '\0';
-                    }
-                    std::cout << "Client> " << self->data << "\n";
-
-                    // clear the buffer
-                    std::fill(std::begin(self->data), std::end(self->data), 0);
-
-                    // continue reading more data from the client
-                    self->connection_socket.async_read_some(
-                        boost::asio::buffer(self->data, max_length),
-                        [self](const boost::system::error_code& err, std::size_t bytes_transferred) {
-                            self->handle_read(err, bytes_transferred);
-                        });
-                } else if (err == boost::asio::error::eof) {
-                    std::cout << "Connection closed by the client\n";
-                    self->connection_socket.close();
-                } else {
-                    std::cerr << "Read error: " << err.message() << "\n";
-                    self->connection_socket.close();
-                }
+                self->handle_read(err, bytes_transferred);
             });
     }
 
-    void handle_read(const boost::system::error_code& err, size_t bytes_transferred) {
+    void handle_read(const boost::system::error_code& err, std::size_t bytes_transferred) {        
         if (!err) {
-            // Null-terminate the received data to handle it as a string
-            if (bytes_transferred < max_length) {
-                data[bytes_transferred] = '\0';
-            }
+            // extract from the buffer
+            std::istream stream(&read_buffer);
+            std::string data;
+            std::getline(stream, data);
+
+            // print the received message
             std::cout << "Client> " << data << "\n";
 
-            // Clear the buffer to remove any leftover data
-            std::fill(std::begin(data), std::end(data), 0);
-        
-            // Continue reading more data from the client
-            connection_socket.async_read_some(boost::asio::buffer(data, max_length),
-                                              boost::bind(&Connection_Handler::handle_read,
-                                                          shared_from_this(),
-                                                          boost::placeholders::_1,
-                                                          boost::placeholders::_2));
+            do_read();
         } else if (err == boost::asio::error::eof) {
-            // Handle EOF gracefully, which indicates the connection was closed by the client
-            std::cout << "Connection closed by the client\n";
+            std::cout << "\nConnection closed by the client\n";
             connection_socket.close();
-        
         } else {
             std::cerr << "Read error: " << err.message() << "\n";
             connection_socket.close();
@@ -115,7 +95,7 @@ public:
 class Server {
 private:
     tcp::acceptor server_acceptor;
-    bool is_waiting = true; // flag to control print "waiting..."
+    std::atomic<bool> is_waiting = true; // flag to control print "waiting..."
     
     void start_accept() {
         auto& io_context = static_cast<boost::asio::io_context&>(server_acceptor.get_executor().context());
@@ -126,9 +106,8 @@ private:
                                     boost::bind(&Server::handle_accept, this, connection,
                                                 boost::asio::placeholders::error));
 
-        if (is_waiting) {
+        if (is_waiting.exchange(false)) { // atomic check and set
             std::cout << "\nWaiting for a client to connect on " << ip_address << ":" << port << "...\n";
-            is_waiting = false;
         }        
     }
 
@@ -181,6 +160,7 @@ int main(int argc, char* argv[]) {
             thread_pool.emplace_back([&io_context]() { io_context.run(); });
         }
 
+        // wait till all threads are done
         for (auto& thread : thread_pool) {
             thread.join();
         }

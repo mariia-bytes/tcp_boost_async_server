@@ -1,6 +1,5 @@
 #include <iostream>
 #include <boost/asio.hpp>
-#include <boost/bind/bind.hpp>
 #include <boost/enable_shared_from_this.hpp>
 #include <thread>
 #include <algorithm>
@@ -102,9 +101,11 @@ private:
         
         Connection_Handler::pointer connection = Connection_Handler::create(io_context);
 
-        server_acceptor.async_accept(connection->socket(),
-                                    boost::bind(&Server::handle_accept, this, connection,
-                                                boost::asio::placeholders::error));
+        server_acceptor.async_accept(
+            connection->socket(),
+            [this, connection](const boost::system::error_code& error) {
+                handle_accept(connection, error);
+            });
 
         if (is_waiting.exchange(false)) { // atomic check and set
             std::cout << "\nWaiting for a client to connect on " << ip_address << ":" << port << "...\n";

@@ -4,6 +4,8 @@
 #include <thread>
 #include <algorithm>
 #include <string>
+#include <map>
+#include <mutex>
 
 unsigned short port = 55000; // default port
 std::string ip_address = "127.0.0.1"; // default IP address
@@ -16,15 +18,23 @@ using ip::tcp;
 class Connection_Handler : public boost::enable_shared_from_this<Connection_Handler> {
 private: 
     tcp::socket connection_socket;
-    std::string message = "Hello from Server!\n";
-    boost::asio::streambuf read_buffer;
-
+    std::string client_id; // unique adentifier for the client
+    // Server& server;
+    std::string message = "Hello from Server!\n"; // greeting message to the server
+    boost::asio::streambuf read_buffer; // dynamic buffer to read from the socket
 public:
     typedef boost::shared_ptr<Connection_Handler> pointer;
 
+
+public:
     Connection_Handler(boost::asio::io_context& io_context) 
         : connection_socket(io_context) {}
 
+    // get client unique identifier
+    std::string get_client_id() const {
+        return client_id;
+    }
+        
     // create a shared pointer
     static pointer create(boost::asio::io_context& io_context) {
         return pointer(new Connection_Handler(io_context));
@@ -35,9 +45,22 @@ public:
         return connection_socket;
     }
 
+    void retrive_client_id() {
+        try {
+            client_id = connection_socket.remote_endpoint().address().to_string() 
+                        + ":" + std::to_string(connection_socket.remote_endpoint().port());
+            std::cout << "\nClient connected: " << client_id << "\n";
+        } catch (const std::exception& e) {
+            std::cerr << "\nError retrieving client information: "
+                      << e.what() << "\n";
+        }
+    }
+
     void start() {
         // capture shared ownership of the handler
         auto self = shared_from_this();
+
+        retrive_client_id();
 
         // send an initial message
         connection_socket.async_write_some(
@@ -59,6 +82,9 @@ private:
         // capture shared ownership of the handler
         auto self = shared_from_this();
 
+        // reset the buffer
+        read_buffer.consume(read_buffer.size());
+
         boost::asio::async_read_until(
             connection_socket,
             read_buffer,
@@ -76,15 +102,23 @@ private:
             std::getline(stream, data);
 
             // print the received message
-            std::cout << "Client> " << data << "\n";
+            if (data.empty()) {
+                std::cout << "Received an empty message from client.\n";
+            } else {
+                std::cout << "Client> " << data << "\n";
+            }
 
+            read_buffer.consume(bytes_transferred);
             do_read();
         } else if (err == boost::asio::error::eof) {
-            std::cout << "\nConnection closed by the client\n";
+            std::cout << "\nConnection closed by the client: " << client_id << "\n";
+            // std::cout << "Current clients: " << need to make something
             connection_socket.close();
+            // server.remove_client(client_id); // notify the server
         } else {
             std::cerr << "Read error: " << err.message() << "\n";
             connection_socket.close();
+            // server.remove_client(client_id); // notify the server
         }
     }
 };
@@ -94,6 +128,8 @@ private:
 class Server {
 private:
     tcp::acceptor server_acceptor;
+    std::map<std::string, Connection_Handler::pointer> clients; // map of connected clients
+    std::mutex clients_mutex; // to protect clients map
     std::atomic<bool> is_waiting = true; // flag to control print "waiting..."
     
     void start_accept() {
@@ -121,8 +157,21 @@ public:
     void handle_accept(Connection_Handler::pointer connection, const boost::system::error_code& err) {
         if (!err) {
             connection->start();
+            std::string client_id = connection->get_client_id();
+            // lock before modifying the map
+            std::lock_guard<std::mutex> lock(clients_mutex);
+            clients[client_id] = connection;
+            std::cout << "Current clients: " << clients.size() << "\n";
         }
         start_accept();
+    }
+
+    // remove client when it's disconnected
+    void remove_client(const std::string& client_id) {
+        std::lock_guard<std::mutex> lock(clients_mutex);
+        clients.erase(client_id);
+        std::cout << "\nClient disconnected: " << client_id << "\n";
+        std::cout << "Current clients: " << clients.size() << "\n";
     }
 };
 /*****************************************************************************************************/

@@ -7,6 +7,7 @@
 #include <string>
 #include <map>
 #include <mutex>
+#include <optional>
 
 unsigned short port = 55000; // default port
 std::string ip_address = "127.0.0.1"; // default IP address
@@ -21,16 +22,34 @@ class Connection_Handler;
 /***** CLASS CLIENT MANAGER *************************************************************************/
 class Client_Manager {
 private:
-    std::map<std::string, boost::shared_ptr<Connection_Handler>> clients; // map of connected clients
+    std::map<std::string, std::pair<unsigned int, boost::shared_ptr<Connection_Handler>>> clients; // map of connected clients
     std::mutex clients_mutex; // protection of the clients map
+    std::atomic<unsigned int> client_id_counter {0}; // unique client number counter
    
 public:
     // add a new client
     void add_client(const std::string& client_id, const boost::shared_ptr<Connection_Handler>& handler) {
         std::lock_guard<std::mutex> lock(clients_mutex);
-        clients[client_id] = handler;
-        std::cout << "\tClient added: " << client_id << "\n";
+        unsigned int client_number = generate_unique_id();
+        clients[client_id] = {client_number, handler};
+        std::cout << "\tClient added: " << client_id << " (Client #" << client_number << ")\n";
         std::cout << "\tCurrent clients: " << clients.size() << "\n";
+    }
+
+    // generate a new unique ID
+    unsigned int generate_unique_id() {
+        return ++client_id_counter;
+    }
+
+    // get client number by client_id
+    std::optional<unsigned int> get_client_number(const std::string& client_id) {
+        std::lock_guard<std::mutex> lock(clients_mutex);
+
+        auto it = clients.find(client_id);
+        if (it != clients.end()) {
+            return it->second.first; // return the client number
+        }
+        return std::nullopt;
     }
 
     // remove a client
@@ -40,8 +59,9 @@ public:
         // check if the client is in the map
         auto it = clients.find(client_id);
         if (it != clients.end()) {
+            unsigned int client_number = it->second.first; // extract the unique ID
             clients.erase(it);
-            std::cout << "\tClient removed from the map: " << client_id << "\n";
+            std::cout << "\tClient removed: " << client_id << " (Client #" << client_number << ")\n";
         } else {
             std::cerr << "\n\tAttempted to remove a non-existent client: " << client_id << "\n";
         }
@@ -69,9 +89,10 @@ public:
 class Connection_Handler : public boost::enable_shared_from_this<Connection_Handler> {
 private: 
     tcp::socket connection_socket;
-    std::string client_id; // unique identifier for the clien
+    std::string client_id; // unique identifier for the client (IP:port)
     Client_Manager& client_manager; 
-    std::string message = "Hello from Server!\n"; // greeting message to the server
+    unsigned int unique_client_number; // client number assigned by Client_Manager
+    std::string message = "Hello from Server! Your unique ID is #"; // message to clients
     boost::asio::streambuf read_buffer; // dynamic buffer to read from the socket
 public:
     typedef boost::shared_ptr<Connection_Handler> pointer;
@@ -95,15 +116,28 @@ public:
         // capture the ownership
         auto self = shared_from_this();
 
-        retrive_client_id();
-        client_manager.add_client(client_id, shared_from_this());
+        // retrieve the client ID (IP:port)
+        retrieve_client_id();
 
-        // send an initial message
+        // retrieve or add the client in the Client_Manager
+        auto client_number_opt = client_manager.get_client_number(client_id);
+
+        if (!client_number_opt) {
+            // if the client ID is not yet registered, add it
+            client_manager.add_client(client_id, self);
+            client_number_opt = client_manager.get_client_number(client_id);
+        }
+
+        unique_client_number = client_number_opt.value();
+
+        message += std::to_string(unique_client_number) + "\n";
+
+        // send initial message
         connection_socket.async_write_some(
             boost::asio::buffer(message),
             [self](const boost::system::error_code& err, std::size_t bytes_transferred) {
                 if (!err) {
-                    std::cout << "\nMessage sent to client: " << self->message;
+                    std::cout << "\nMessage sent to client #" << self->unique_client_number << ": " << self->message;
                 } else {
                     std::cerr << "Write error: " << err.message() << "\n";
                 }
@@ -111,11 +145,15 @@ public:
         do_read();
     }
 
-    void retrive_client_id() {
-        try {
-            client_id = connection_socket.remote_endpoint().address().to_string() 
-                        + ":" + std::to_string(connection_socket.remote_endpoint().port());
-            std::cout << "\nClient connected: " << client_id << "\n";
+    void retrieve_client_id() {
+        try { 
+            if (connection_socket.is_open()) {
+                auto endpoint = connection_socket.remote_endpoint();
+                client_id = endpoint.address().to_string() + ":" + std::to_string(endpoint.port());
+                std::cout << "\nClient connected: " << client_id << "\n";
+            } else {
+                std::cerr << "\nSocket is not open; unable to retrieve client ID\n";
+            }
         } catch (const std::exception& e) {
             std::cerr << "\nError retrieving client information: "
                       << e.what() << "\n";
@@ -123,13 +161,19 @@ public:
     }
 
     ~Connection_Handler() {
-        if (connection_socket.is_open()) {
-            boost::system::error_code ec;
-            connection_socket.cancel(ec); // Cancel pending operations
-            if (ec) {
-                std::cerr << "Error canceling socket: " << ec.message() << "\n";
+        try {      
+            if (connection_socket.is_open()) {
+                boost::system::error_code ec;
+                connection_socket.close(ec);
+                if (ec) {
+                    std::cerr << "\nSocket close error: " << ec.message() << "\n";
+                }
             }
+
+        } catch (const std::exception& e) {
+            std::cerr << "Error in Connection_Handler destructor: " << e.what() << "\n";
         }
+
         /* 
         // can't say why I don't have to do it but the valgrind tells me I don't
         // client_manager.remove_client(client_id);
@@ -160,6 +204,8 @@ private:
 
     void handle_read(const boost::system::error_code& err, std::size_t bytes_transferred) {        
         if (!err) {
+            // unique_client_number = client_manager.add_client(client_id, shared_from_this());
+
             // extract from the buffer
             std::istream stream(&read_buffer);
             std::string data;
@@ -169,7 +215,7 @@ private:
             if (data.empty()) {
                 std::cout << "Received an empty message from client.\n";
             } else {
-                std::cout << "Client> " << data << "\n";
+                std::cout << "Client #" << unique_client_number << "> " << data << "\n";
             }
 
             // clear the buffer

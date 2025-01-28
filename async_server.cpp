@@ -1,13 +1,28 @@
+// everything I/O related
 #include <iostream>
+#include <fstream>
+
+// everything boost related
 #include <boost/asio.hpp>
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/shared_ptr.hpp>
+
+// everything thread-related
 #include <thread>
-#include <algorithm>
-#include <string>
-#include <map>
 #include <mutex>
+#include <atomic>
+#include <condition_variable>
+
+// everything data structures related
+#include <string>
+#include <vector>
+#include <map>
+#include <algorithm>
+
+// additional
 #include <optional>
+#include <chrono>
+
 
 unsigned short port = 55000; // default port
 std::string ip_address = "127.0.0.1"; // default IP address
@@ -18,22 +33,97 @@ using ip::tcp;
 class Connection_Handler;
 
 
+/***** CLASS Async_File_Writer ***********************************************************************/
+class Async_File_Writer {
+private:
+    std::thread worker_thread; // dedicated thread for file writing
+    std::mutex data_mutex; // protecs clients snapshot
+    std::condition_variable cv; // signals the working thread to write a client
+    std::atomic<bool> running {true}; // flag to control the worker thread
+    std::vector<std::pair<std::string, unsigned int>> clients_snapshot;
+    std::string file_path;
 
-/***** CLASS CLIENT MANAGER *************************************************************************/
+public:
+    Async_File_Writer(const std::string& path) 
+        : file_path(path) {
+        // start the worker thread
+        worker_thread = std::thread(&Async_File_Writer::worker_function, this);
+    }
+
+    ~Async_File_Writer() {
+        // signal the worker thread to stop and join
+        running = false;
+        // wake up the thread if it's waiting
+        cv.notify_one();
+        if (worker_thread.joinable()) {
+            worker_thread.join();
+        }
+    }
+
+    void update_data(const std::map<std::string, unsigned int>& clients) {
+        {
+            std::lock_guard<std::mutex> lock(data_mutex);
+            clients_snapshot.clear();
+            for (const auto& [client_id, client_number] : clients) {
+                clients_snapshot.emplace_back(client_id, client_number);
+            }
+        }
+        // signal the worker thread about new data
+        cv.notify_one();
+    }
+
+
+private:
+    void worker_function() {
+        while (running) {
+            std::unique_lock<std::mutex> lock(data_mutex);
+
+            // wait for notification or timeout
+            cv.wait_for(lock, std::chrono::seconds(5), [this]() { return !running || !clients_snapshot.empty(); });
+
+            // if the worker thread's stopped
+            if (!running) 
+                break;
+
+            // write the snapshot to the file
+            if (!clients_snapshot.empty()) {
+                std::ofstream file(file_path);
+                if (file.is_open()) {
+                    for (const auto& [client_id, client_number] : clients_snapshot) {
+                        file << "Client #" << client_number << ": [" << client_id << "]\n";
+                    }
+                    std::cout << "\tDEBAG: Clients written to file: " << file_path << "\n";
+                } else {
+                    std::cerr << "Failed to open file: " << file_path << "\n";
+                }
+            }
+        }
+    }
+};
+
+/*****************************************************************************************************/
+
+/***** CLASS CLIENT MANAGER **************************************************************************/
 class Client_Manager {
 private:
     std::map<std::string, std::pair<unsigned int, boost::shared_ptr<Connection_Handler>>> clients; // map of connected clients
     std::mutex clients_mutex; // protection of the clients map
     std::atomic<unsigned int> client_id_counter {0}; // unique client number counter
+    Async_File_Writer file_writer;
    
 public:
+    Client_Manager(const std::string& file_path) 
+        : file_writer(file_path) { }
+
+
     // add a new client
     void add_client(const std::string& client_id, const boost::shared_ptr<Connection_Handler>& handler) {
         std::lock_guard<std::mutex> lock(clients_mutex);
         unsigned int client_number = generate_unique_id();
         clients[client_id] = {client_number, handler};
-        std::cout << "\tClient added: " << client_id << " (Client #" << client_number << ")\n";
-        std::cout << "\tCurrent clients: " << clients.size() << "\n";
+        file_writer.update_data(get_clients_snapshot());
+        std::cout << "\tDEBAG: Client added: " << client_id << " (Client #" << client_number << ")\n";
+        std::cout << "\tDEBAG: Current clients: " << clients.size() << "\n";
     }
 
     // generate a new unique ID
@@ -61,17 +151,26 @@ public:
         if (it != clients.end()) {
             unsigned int client_number = it->second.first; // extract the unique ID
             clients.erase(it);
-            std::cout << "\tClient removed: " << client_id << " (Client #" << client_number << ")\n";
+            file_writer.update_data(get_clients_snapshot());
+            std::cout << "\tDEBAD: Client removed: " << client_id << " (Client #" << client_number << ")\n";
         } else {
             std::cerr << "\n\tAttempted to remove a non-existent client: " << client_id << "\n";
         }
-        std::cout << "\tCurrent clients: " << clients.size() << "\n";
+        std::cout << "\tDEBAG: Current clients: " << clients.size() << "\n";
     }
     
     // get the current number of clients
     size_t get_client_count() {
         std::lock_guard<std::mutex> lock(clients_mutex);
         return clients.size();
+    }
+
+    std::map<std::string, unsigned int> get_clients_snapshot() {
+        std::map<std::string, unsigned int> snapshot;
+        for (const auto& [client_id, pair] : clients) {
+            snapshot[client_id] = pair.first;
+        }
+        return snapshot;
     }
 
     // check if the client is connected
@@ -85,7 +184,7 @@ public:
 
 
 
-/************ CLASS CONNECTION HANDLER *********************************************************************/
+/************ CLASS CONNECTION HANDLER ***************************************************************/
 class Connection_Handler : public boost::enable_shared_from_this<Connection_Handler> {
 private: 
     tcp::socket connection_socket;
@@ -273,8 +372,9 @@ private:
     }
 
 public:
-    Server(boost::asio::io_context& io_context, const std::string& ip_address, int port) 
-        : server_acceptor(io_context, tcp::endpoint(boost::asio::ip::make_address(ip_address), port)) {
+    Server(boost::asio::io_context& io_context, const std::string& ip_address, int port, const std::string& file_path) 
+        : server_acceptor(io_context, tcp::endpoint(boost::asio::ip::make_address(ip_address), port)),
+          client_manager(file_path) {
             start_accept();
     }
 
@@ -299,7 +399,9 @@ int main(int argc, char* argv[]) {
         }
     }
     
-    
+    // file path fot Async_File_Writer
+    std::string file_path = "clients_log.txt";
+
     try {
         boost::asio::io_context io_context;
 
@@ -308,7 +410,7 @@ int main(int argc, char* argv[]) {
         std::vector<std::thread> thread_pool;
 
         // create and start the server
-        Server server(io_context, ip_address, port);
+        Server server(io_context, ip_address, port, file_path);
 
         // handling signal for graceful shutdown
         boost::asio::signal_set signals(io_context, SIGINT, SIGTERM);

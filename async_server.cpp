@@ -6,6 +6,7 @@
 #include <boost/asio.hpp>
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/shared_ptr.hpp>
+#include <boost/filesystem.hpp>
 
 // everything thread-related
 #include <thread>
@@ -27,6 +28,7 @@
 
 unsigned short port = 55000; // default port
 std::string ip_address = "127.0.0.1"; // default IP address
+std::string file_path = "clients_log.txt"; // default file path to write clients
 
 using namespace boost::asio;
 using ip::tcp;
@@ -37,98 +39,58 @@ class Connection_Handler;
 /***** CLASS Async_File_Writer ***********************************************************************/
 class Async_File_Writer {
 private:
-    std::thread worker_thread; // dedicated thread for file writing
-    std::mutex data_mutex; // protecs clients snapshot
-    std::condition_variable cv; // signals the working thread to write a client
-    std::atomic<bool> running {true}; // flag to control the worker thread
-    std::set<std::pair<std::string, unsigned int>> clients_snapshot;
+    boost::asio::io_context& io_context;
+    boost::asio::strand<boost::asio::io_context::executor_type> strand;
     std::string file_path;
+    std::set<std::pair<std::string, unsigned int>> clients_snapshot;
+    std::set<std::pair<std::string, unsigned int>> written_clients;
+    std::mutex snapshot_mutex; // protecs clients snapshot    
 
 public:
+    Async_File_Writer(boost::asio::io_context& context, const std::string& path) 
+        : io_context(context), strand(context.get_executor()), file_path(path) {}
 
-
-
-    Async_File_Writer(const std::string& path) 
-        : file_path(path) {
-        // start the worker thread
-        worker_thread = std::thread(&Async_File_Writer::worker_function, this);
-    }
-
-    ~Async_File_Writer() {
-        // signal the worker thread to stop and join
-        running = false;
-        // wake up the thread if it's waiting
-        cv.notify_one();
-        if (worker_thread.joinable()) {
-            worker_thread.join();
-        }
-    }
+    ~Async_File_Writer() = default;
 
     void update_data(const std::map<std::string, unsigned int>& clients) {
-        std::lock_guard<std::mutex> lock(data_mutex);
+        std::set<std::pair<std::string, unsigned int>> new_clients;
+        {
+            std::lock_guard<std::mutex> lock(snapshot_mutex);
         
-        std::cout << "\n\tDEBAG: Updating data. Current snapshot size: " << clients_snapshot.size() << "\n";
+            std::cout << "\n\tDEBAG: Updating data. Current snapshot size: " << clients_snapshot.size() << "\n";
 
-        for (const auto& [client_id, client_number] : clients) {
-        // Only add new clients that aren't in the snapshot
-        if (clients_snapshot.find({client_id, client_number}) == clients_snapshot.end()) {
-            clients_snapshot.emplace(client_id, client_number);
-            std::cout << "\tDEBAG: Added to snapshot: Client #" << client_number << " [" << client_id << "]\n";
-        } else {
-            std::cout << "Skipped (already in snapshot): Client #" << client_number << " [" << client_id << "]\n";
-        }
-    }
-        
-        /*
-        // don't need this bit if I decide to adopt std::set instread of std::vector
-        for (const auto& [client_id, client_number] : clients) {
-            auto it = std::find_if(clients_snapshot.begin(), clients_snapshot.end(),
-                                   [&](const std::pair<std::string, unsigned int>& entry) {
-                                        return entry.first == client_id;
-                                    });
+            for (const auto& client : clients) {
+            std::pair<std::string, unsigned int> client_entry = {client.first, client.second};
 
-            if (it == clients_snapshot.end()) {
-                clients_snapshot.emplace_back(client_id, client_number);
-            }
-        }
-        */
-               
-        // signal the worker thread about new data
-        cv.notify_one();
-    }
-
-
-private:
-    void worker_function() {
-        while (running) {
-            std::unique_lock<std::mutex> lock(data_mutex);
-
-            // wait for notification or timeout
-            // cv.wait_for(lock, std::chrono::seconds(5), [this]() { return !running || !clients_snapshot.empty(); });
-
-            // wait for notification when clients_snapshot is not empty
-            cv.wait(lock, [this]() { return !running || !clients_snapshot.empty(); });
-
-            // if the worker thread's stopped
-            if (!running) 
-                break;
-
-            // write the snapshot to the file
-            if (!clients_snapshot.empty()) {
-                std::ofstream file(file_path, std::ios::app);
-                if (file.is_open()) {
-                    for (const auto& [client_id, client_number] : clients_snapshot) {
-                        file << "Client #" << client_number << ": [" << client_id << "]\n";
-                    }
-                    std::cout << "\tDEBAG: Clients written to file: " << file_path << "\n";
-                    
-                    // clear the snaphot to prevent duplicates writes to the file
-                    clients_snapshot.clear();
-                } else {
-                    std::cerr << "Failed to open file: " << file_path << "\n";
+                // Only add clients that are NOT already written
+                if (written_clients.find(client_entry) == written_clients.end()) {
+                    new_clients.insert(client_entry);
+                    clients_snapshot.insert(client_entry);
                 }
             }
         }
+
+        // post the file-writing operation to the strand
+        if (!new_clients.empty()) {
+            boost::asio::post(strand, [this, new_clients]() { write_to_file(new_clients); });
+        }
+    }
+
+private:
+    void write_to_file(const std::set<std::pair<std::string, unsigned int>>& new_clients) {
+        if (new_clients.empty()) return;
+
+        std::ofstream file(file_path, std::ios::app);  // Open file in append mode
+        if (file.is_open()) {
+            for (const auto& [client_id, client_number] : new_clients) {
+                file << "Client #" << client_number << " : [" << client_id << "]\n";
+            }
+
+            std::lock_guard<std::mutex> lock(snapshot_mutex);
+            written_clients.insert(new_clients.begin(), new_clients.end());  // Mark clients as logged
+        } else {
+            std::cerr << "Failed to open the file: " << file_path << "\n";
+        }    
     }
 };
 
@@ -143,9 +105,8 @@ private:
     Async_File_Writer file_writer;
    
 public:
-    Client_Manager(const std::string& file_path) 
-        : file_writer(file_path) { }
-
+    Client_Manager(boost::asio::io_context& io_context, const std::string& file_path)
+        : file_writer(io_context, file_path) {}
 
     // add a new client
     void add_client(const std::string& client_id, const boost::shared_ptr<Connection_Handler>& handler) {
@@ -156,10 +117,10 @@ public:
             unsigned int client_number = generate_unique_id();
             clients[client_id] = {client_number, handler};
             file_writer.update_data(get_clients_snapshot());
-            std::cout << "\tDEBAG: Client added: " << client_id << " (Client #" << client_number << ")\n";
-            std::cout << "\tDEBAG: Current clients: " << clients.size() << "\n";
+            std::cout << "\tDEBAG (Client_Manager::add_client()): Client #" << client_number << "added to the map: [" << client_id << "]\n";
+            std::cout << "\tDEBAG (Client_Manager::add_client()): Current clients: " << clients.size() << "\n";
         } else {
-            std::cout << "\tDEBAG: Client already exists: " << client_id << "\n";
+            std::cout << "\tDEBAG (Client_Manager::add_client()): Client already exists: " << client_id << "\n";
         }      
     }
 
@@ -188,12 +149,12 @@ public:
         if (it != clients.end()) {
             unsigned int client_number = it->second.first; // extract the unique ID
             clients.erase(it);
-            file_writer.update_data(get_clients_snapshot());
-            std::cout << "\tDEBAD: Client removed: " << client_id << " (Client #" << client_number << ")\n";
+            // file_writer.update_data(get_clients_snapshot());
+            std::cout << "\tDEBAD (Client_Manager::remove_client()): Client #" << client_number << " removed : ["  << client_id << "]\n";
         } else {
             std::cerr << "\n\tAttempted to remove a non-existent client: " << client_id << "\n";
         }
-        std::cout << "\tDEBAG: Current clients: " << clients.size() << "\n";
+        std::cout << "\tDEBAG (Client_Manager::remove_client): Current clients: " << clients.size() << "\n";
     }
     
     // get the current number of clients
@@ -354,9 +315,7 @@ private:
 
     void handle_read(const boost::system::error_code& err, std::size_t bytes_transferred) {        
         if (!err) {
-            // unique_client_number = client_manager.add_client(client_id, shared_from_this());
-
-            // extract from the buffer
+           // extract from the buffer
             std::istream stream(&read_buffer);
             std::string data;
             std::getline(stream, data);
@@ -425,7 +384,7 @@ private:
 public:
     Server(boost::asio::io_context& io_context, const std::string& ip_address, int port, const std::string& file_path) 
         : server_acceptor(io_context, tcp::endpoint(boost::asio::ip::make_address(ip_address), port)),
-          client_manager(file_path) {
+          client_manager(io_context, file_path) {
             start_accept();
     }
 
@@ -439,7 +398,6 @@ public:
 /*****************************************************************************************************/
 
 
-
 int main(int argc, char* argv[]) {
     // determine the port from command-line argument or use default    
     if (argc > 1) {
@@ -449,9 +407,6 @@ int main(int argc, char* argv[]) {
             std::cerr << "Invalid port provided. Using default port 55000\n";
         }
     }
-    
-    // file path fot Async_File_Writer
-    std::string file_path = "clients_log.txt";
 
     try {
         boost::asio::io_context io_context;

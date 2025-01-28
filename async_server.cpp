@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include <algorithm>
 
 // additional
@@ -40,10 +41,13 @@ private:
     std::mutex data_mutex; // protecs clients snapshot
     std::condition_variable cv; // signals the working thread to write a client
     std::atomic<bool> running {true}; // flag to control the worker thread
-    std::vector<std::pair<std::string, unsigned int>> clients_snapshot;
+    std::set<std::pair<std::string, unsigned int>> clients_snapshot;
     std::string file_path;
 
 public:
+
+
+
     Async_File_Writer(const std::string& path) 
         : file_path(path) {
         // start the worker thread
@@ -61,13 +65,34 @@ public:
     }
 
     void update_data(const std::map<std::string, unsigned int>& clients) {
-        {
-            std::lock_guard<std::mutex> lock(data_mutex);
-            clients_snapshot.clear();
-            for (const auto& [client_id, client_number] : clients) {
+        std::lock_guard<std::mutex> lock(data_mutex);
+        
+        std::cout << "\n\tDEBAG: Updating data. Current snapshot size: " << clients_snapshot.size() << "\n";
+
+        for (const auto& [client_id, client_number] : clients) {
+        // Only add new clients that aren't in the snapshot
+        if (clients_snapshot.find({client_id, client_number}) == clients_snapshot.end()) {
+            clients_snapshot.emplace(client_id, client_number);
+            std::cout << "\tDEBAG: Added to snapshot: Client #" << client_number << " [" << client_id << "]\n";
+        } else {
+            std::cout << "Skipped (already in snapshot): Client #" << client_number << " [" << client_id << "]\n";
+        }
+    }
+        
+        /*
+        // don't need this bit if I decide to adopt std::set instread of std::vector
+        for (const auto& [client_id, client_number] : clients) {
+            auto it = std::find_if(clients_snapshot.begin(), clients_snapshot.end(),
+                                   [&](const std::pair<std::string, unsigned int>& entry) {
+                                        return entry.first == client_id;
+                                    });
+
+            if (it == clients_snapshot.end()) {
                 clients_snapshot.emplace_back(client_id, client_number);
             }
         }
+        */
+               
         // signal the worker thread about new data
         cv.notify_one();
     }
@@ -79,7 +104,10 @@ private:
             std::unique_lock<std::mutex> lock(data_mutex);
 
             // wait for notification or timeout
-            cv.wait_for(lock, std::chrono::seconds(5), [this]() { return !running || !clients_snapshot.empty(); });
+            // cv.wait_for(lock, std::chrono::seconds(5), [this]() { return !running || !clients_snapshot.empty(); });
+
+            // wait for notification when clients_snapshot is not empty
+            cv.wait(lock, [this]() { return !running || !clients_snapshot.empty(); });
 
             // if the worker thread's stopped
             if (!running) 
@@ -87,12 +115,15 @@ private:
 
             // write the snapshot to the file
             if (!clients_snapshot.empty()) {
-                std::ofstream file(file_path);
+                std::ofstream file(file_path, std::ios::app);
                 if (file.is_open()) {
                     for (const auto& [client_id, client_number] : clients_snapshot) {
                         file << "Client #" << client_number << ": [" << client_id << "]\n";
                     }
                     std::cout << "\tDEBAG: Clients written to file: " << file_path << "\n";
+                    
+                    // clear the snaphot to prevent duplicates writes to the file
+                    clients_snapshot.clear();
                 } else {
                     std::cerr << "Failed to open file: " << file_path << "\n";
                 }
@@ -119,11 +150,17 @@ public:
     // add a new client
     void add_client(const std::string& client_id, const boost::shared_ptr<Connection_Handler>& handler) {
         std::lock_guard<std::mutex> lock(clients_mutex);
-        unsigned int client_number = generate_unique_id();
-        clients[client_id] = {client_number, handler};
-        file_writer.update_data(get_clients_snapshot());
-        std::cout << "\tDEBAG: Client added: " << client_id << " (Client #" << client_number << ")\n";
-        std::cout << "\tDEBAG: Current clients: " << clients.size() << "\n";
+
+        
+        if (clients.find(client_id) == clients.end()) { // ensure client is not already in the map
+            unsigned int client_number = generate_unique_id();
+            clients[client_id] = {client_number, handler};
+            file_writer.update_data(get_clients_snapshot());
+            std::cout << "\tDEBAG: Client added: " << client_id << " (Client #" << client_number << ")\n";
+            std::cout << "\tDEBAG: Current clients: " << clients.size() << "\n";
+        } else {
+            std::cout << "\tDEBAG: Client already exists: " << client_id << "\n";
+        }      
     }
 
     // generate a new unique ID
@@ -167,9 +204,23 @@ public:
 
     std::map<std::string, unsigned int> get_clients_snapshot() {
         std::map<std::string, unsigned int> snapshot;
+
+        /*
+        for (const auto& [client_id, pair] : clients) {
+            unsigned int client_number = pair.first;
+
+            auto it = file_writer.clients_snapshot.find({client_id, client_number});
+            if (it == file_writer.clients_snapshot.end()) {
+                snapshot[client_id] = client_number;
+            }
+        }
+        */
+        
         for (const auto& [client_id, pair] : clients) {
             snapshot[client_id] = pair.first;
         }
+        
+
         return snapshot;
     }
 
@@ -312,7 +363,7 @@ private:
 
             // print the received message
             if (data.empty()) {
-                std::cout << "Received an empty message from client.\n";
+                std::cout << "Received an empty message from client #" << unique_client_number << "\n";
             } else {
                 std::cout << "Client #" << unique_client_number << "> " << data << "\n";
             }
@@ -324,14 +375,14 @@ private:
             do_read();
         } else if (err == boost::asio::error::eof) {
             // client disconnected gracefully
-            std::cout << "\nConnection closed by the client: " << client_id << "\n";
+            std::cout << "\nConnection closed by the client #" << unique_client_number << " : [" << client_id << "]\n";
             connection_socket.close();
             client_manager.remove_client(client_id);
             std::cout << "Current clients: " << client_manager.get_client_count() << "\n";
             
         } else if (err == boost::asio::error::operation_aborted) {
             // (possibly) the server shut down
-            std::cerr << "Operation aborted for client: " << client_id << "\n";
+            std::cerr << "Operation aborted for client #" << unique_client_number << " : [" << client_id << "]\n";
         /*
         } else if (err == boost::asio::error::resouce_unavailable_try_again) {
             // temporary issue, log and retry

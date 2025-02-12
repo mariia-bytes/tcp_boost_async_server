@@ -33,9 +33,11 @@
 #include <boost/log/utility/setup/file.hpp>
 #include <boost/log/utility/setup/common_attributes.hpp>
 
+#include "Logger.h"
+
 // logging macros
 #define LOG_INFO(msg) BOOST_LOG_TRIVIAL(info) << msg
-#define LOG_ERROR(msg) BOOST_LOG_TRIVIAL(error) << msg
+// #define LOG_ERROR(msg) BOOST_LOG_TRIVIAL(error) << msg
 #define LOG_DEBUG(msg) BOOST_LOG_TRIVIAL(debug) << msg
 
 // global variables for default
@@ -72,7 +74,7 @@ private:
     std::string file_path;
     std::set<std::pair<std::string, unsigned int>> clients_snapshot;
     std::set<std::pair<std::string, unsigned int>> written_clients;
-    std::mutex snapshot_mutex; // protecs clients snapshot    
+    std::mutex snapshot_mutex; // protects clients snapshot    
 
 public:
     Async_File_Writer(boost::asio::io_context& context, const std::string& path) 
@@ -84,9 +86,8 @@ public:
         std::set<std::pair<std::string, unsigned int>> new_clients;
         {
             std::lock_guard<std::mutex> lock(snapshot_mutex);
-        
-            LOG_DEBUG("(Async_File_Writer::update_data) : Current snapshot size: " << clients_snapshot.size());
-            // std::cout << "\n\tDEBUG: Updating data. Current snapshot size: " << clients_snapshot.size() << "\n";
+
+            Logger::get_instance().log_debug("(Async_File_Writer::update_data) : Updating data. Current snapshot size: " + std::to_string(clients_snapshot.size()));
 
             for (const auto& client : clients) {
             std::pair<std::string, unsigned int> client_entry = {client.first, client.second};
@@ -94,7 +95,7 @@ public:
                 // Only add clients that are NOT already written
                 if (written_clients.find(client_entry) == written_clients.end()) {
                     new_clients.insert(client_entry);
-                    clients_snapshot.insert(client_entry);
+                    // clients_snapshot.insert(client_entry);
                 }
             }
         }
@@ -102,6 +103,7 @@ public:
         // post the file-writing operation to the strand
         if (!new_clients.empty()) {
             boost::asio::post(strand, [this, new_clients]() { write_to_file(new_clients); });
+            Logger::get_instance().log_info("(Async_File_Writer::update_data()) : File writing operation posted to strand");
         }
     }
 
@@ -121,8 +123,7 @@ private:
             written_clients.insert(new_clients.begin(), new_clients.end());  // mark clients as logged
             LOG_INFO("(Async_File_Writer::write_to_file()): Mark client as logged");
         } else {
-            LOG_ERROR("(Async_File_Writer::write_to_file()) : Failed to open the file: " << file_path);
-            // std::cerr << "Failed to open the file: " << file_path << "\n";
+            Logger::get_instance().log_error("(Async_File_Writer::write_to_file()) : Failed to open the file: " + file_path);
         }    
     }
 };
@@ -149,14 +150,12 @@ public:
             unsigned int client_number = generate_unique_id();
             clients[client_id] = {client_number, handler};
             file_writer.update_data(get_clients_snapshot());
-            LOG_DEBUG("(Client_Manager::add_client()) : Client #" << client_number << " added to the map: [" << client_id << "]");
-            // std::cout << "\tDEBUG (Client_Manager::add_client()): Client #" << client_number << " added to the map: [" << client_id << "]\n";
-            LOG_DEBUG("(Client_Manager::add_client()) : Current clients: " << clients.size());
-            // std::cout << "\tDEBUG (Client_Manager::add_client()): Current clients: " << clients.size() << "\n";
+        
+            Logger::get_instance().log_debug("(Client_Manager::add_client()) : Client #" + std::to_string(client_number) + " added to the map: [" + client_id + "]");
+            Logger::get_instance().log_debug("(Client_Manager::add_client()) : Current clients: " + std::to_string(clients.size()));
 
         } else {
-            LOG_DEBUG("(Client_Manager::add_client()) : Client already exists: " << client_id);
-            // std::cout << "\tDEBUG (Client_Manager::add_client()): Client already exists: " << client_id << "\n";
+            Logger::get_instance().log_debug("(Client_Manager::add_client()) : Client already exists: [" + client_id + "]");
         }      
     }
 
@@ -185,15 +184,11 @@ public:
         if (it != clients.end()) {
             unsigned int client_number = it->second.first; // extract the unique ID
             clients.erase(it);
-            // file_writer.update_data(get_clients_snapshot());
-            LOG_DEBUG("(Client_Manager::remove_client()): Client #" << client_number << " removed : ["  << client_id << "]");
-            // std::cout << "\tDEBUD (Client_Manager::remove_client()): Client #" << client_number << " removed : ["  << client_id << "]\n";
+            Logger::get_instance().log_info("(Client_Manager::remove_client()): Client #" + std::to_string(client_number) + " removed from the map : ["  + client_id + "]");
         } else {
-            LOG_ERROR("(Client_Manager::remove_client()): Attempted to remove a non-existent client: " << client_id);
-            // std::cerr << "\n\tAttempted to remove a non-existent client: " << client_id << "\n";
+            Logger::get_instance().log_error("(Client_Manager::remove_client()): Attempted to remove non-existent client: [" + client_id + "]");
         }
-        LOG_DEBUG("(Client_Manager::remove_client): Current clients: " << clients.size());
-        // std::cout << "\tDEBUG (Client_Manager::remove_client): Current clients: " << clients.size() << "\n";
+        Logger::get_instance().log_debug("(Client_Manager::remove_client): Current clients: " + std::to_string(clients.size()));
     }
     
     // get the current number of clients
@@ -204,22 +199,12 @@ public:
 
     std::map<std::string, unsigned int> get_clients_snapshot() {
         std::map<std::string, unsigned int> snapshot;
-
-        /*
-        for (const auto& [client_id, pair] : clients) {
-            unsigned int client_number = pair.first;
-
-            auto it = file_writer.clients_snapshot.find({client_id, client_number});
-            if (it == file_writer.clients_snapshot.end()) {
-                snapshot[client_id] = client_number;
-            }
-        }
-        */
         
         for (const auto& [client_id, pair] : clients) {
             snapshot[client_id] = pair.first;
         }
         
+        Logger::get_instance().log_info("Client_Manager::get_clients_snapshot()) : " + std::to_string(snapshot.size()) + " client added to snapshot");
 
         return snapshot;
     }
@@ -250,7 +235,9 @@ public:
 
 public:
     Connection_Handler(boost::asio::io_context& io_context, Client_Manager& manager) 
-        : connection_socket(io_context), client_manager(manager) {}
+        : connection_socket(io_context), client_manager(manager) {
+            Logger::get_instance().log_info("(Connection_Handler::Connection_Handler()) : Connection Handler initialized");
+    }
         
     // create a shared pointer
     static pointer create(boost::asio::io_context& io_context, Client_Manager& manager) {
@@ -259,6 +246,7 @@ public:
 
     // access socket
     tcp::socket& socket() {
+        Logger::get_instance().log_info("(Connection_Handler::socket()) : Access to socket granted");
         return connection_socket;
     }   
 
@@ -291,7 +279,7 @@ public:
                     LOG_INFO("(Connection_Handler::start()) : Message sent to client #" << self->unique_client_number << ": " << self->message);
                 } else {
                     std::cerr << "Write error: " << err.message() << "\n";
-                    LOG_ERROR("(Connection_Handler::start()) : Write error: " << err.message());
+                    Logger::get_instance().log_error("(Connection_Handler::start()) : Write error: " + err.message());
                 }
             });
         do_read();
@@ -305,12 +293,10 @@ public:
                 std::cout << "\nClient connected: " << client_id << "\n";
                 LOG_INFO("(Connection_Handler::retrive_client_id()) : Client connected: " << client_id);
             } else {
-                std::cerr << "\nSocket is not open; unable to retrieve client ID\n";
-                LOG_ERROR("(Connection_Handler::retrive_client_id()) : Socket is not open; unable to retrieve client ID");
+                Logger::get_instance().log_error("(Connection_Handler::retrive_client_id()) : Socket is not open; unable to retrieve client ID");
             }
         } catch (const std::exception& e) {
-            std::cerr << "\nError retrieving client information: " << e.what() << "\n";
-            LOG_ERROR("(Connection_Handler::retrive_client_id()) : Error retrieving client information: " << e.what());
+            Logger::get_instance().log_error(e);
         }
     }
 
@@ -320,24 +306,13 @@ public:
                 boost::system::error_code ec;
                 connection_socket.close(ec);
                 if (ec) {
-                    std::cerr << "\nSocket close error: " << ec.message() << "\n";
-                    LOG_ERROR("(~Connection_Handler) : Socket close error: " << ec.message());
+                    Logger::get_instance().log_error("(~Connection_Handler) : Socket close error: " + ec.message());
                 }
             }
 
         } catch (const std::exception& e) {
-            std::cerr << "Error in Connection_Handler destructor: " << e.what() << "\n";
-            LOG_ERROR("(~Connection_Handler) : Error in Connection_Handler destructor: " << e.what());
+            Logger::get_instance().log_error(e);
         }
-
-        /* 
-        // can't say why I don't have to do it but the valgrind tells me I don't
-        // client_manager.remove_client(client_id);
-        if (!client_id.empty()) {
-            client_manager.remove_client(client_id);
-        }
-        std::cout << "Connection_Handler destroyed for client: " << client_id << "\n";
-        */
     }
     
 
@@ -385,25 +360,20 @@ private:
             std::cout << "\nConnection closed by the client #" << unique_client_number << " : [" << client_id << "]\n";
             LOG_INFO("(Connection_Handler::handle_read()) : Connection closed by the client #" << unique_client_number << " : [" << client_id << "]");
             connection_socket.close();
-            LOG_INFO("(Connection_Handler::handle_read()) : Socket closed");
+            Logger::get_instance().log_info("(Connection_Handler::handle_read()) : Socket closed due to client disconnected");
 
             client_manager.remove_client(client_id);
-            LOG_INFO("(Connection_Handler::handle_read()) : Client #" << unique_client_number << " removed from the map");
-            std::cout << "Current clients: " << client_manager.get_client_count() << "\n";
-            LOG_INFO("(Connection_Handler::handle_read()) : Current clients: " << client_manager.get_client_count());
             
+            Logger::get_instance().log_info("(Connection_Handler::handle_read()) : Client #" + std::to_string(unique_client_number) 
+                                             + " removed from the map. Current clients: " + std::to_string(client_manager.get_client_count()));
+                      
         } else if (err == boost::asio::error::operation_aborted) {
             // (possibly) the server shut down
-            LOG_ERROR("(Connection_Handler::handle_read()) : Operation aborted for client #" << unique_client_number << " : [" << client_id << "]");
-        /*
-        } else if (err == boost::asio::error::resouce_unavailable_try_again) {
-            // temporary issue, log and retry
-            std::cerr << "Temporary resource issue for client: " << client_id << "\n";
-            do_read();
-        */
+            Logger::get_instance().log_error("(Connection_Handler::handle_read()) : Operation aborted for client #" + std::to_string(unique_client_number) + " : [" + client_id + "]");
+        
         } else {
             // all other errors are treated as non-recoverable
-            LOG_ERROR("(Connection_Handler::handle_read()) : Read error: " << err.message());
+            Logger::get_instance().log_error("(Connection_Handler::handle_read()) : Read error: " + err.message());
             connection_socket.close();
             LOG_INFO("(Connection_Handler::handle_read()) : Socket closed");
             client_manager.remove_client(client_id);
@@ -432,15 +402,16 @@ private:
             });
 
         if (is_waiting.exchange(false)) { // atomic check and set
-            std::cout << "\nWaiting for clients to connect on " << ip_address << ":" << port << "...\n";
-            LOG_INFO("(Server::start_accept()) : Waiting for clients to connect on " << ip_address << ":" << port << "...");
+            std::cout << "\nWaiting for clients to connect on [" << ip_address << " : " << port << "] ...\n";
+            Logger::get_instance().log_info("(Server::start_accept()) : Waiting for clients to connect on [" + ip_address + " : " + std::to_string(port) + "] ...");
         }        
     }
 
 public:
-    Server(boost::asio::io_context& io_context, const std::string& ip_address, int port, const std::string& file_path) 
+    Server(boost::asio::io_context& io_context, const std::string& ip_address, const int port, const std::string& file_path) 
         : server_acceptor(io_context, tcp::endpoint(boost::asio::ip::make_address(ip_address), port)),
           client_manager(io_context, file_path) {
+            Logger::get_instance().log_info("(Server::Server()) : Server initialized on " + ip_address + " : " + std::to_string(port));
             start_accept();
     }
 
@@ -502,7 +473,8 @@ int main(int argc, char* argv[]) {
         }
     
     } catch (std::exception& e) {
-        LOG_ERROR("main() : Exception: " << e.what());
+        std::cerr << "\nSomething went wrong. See server logs for more details\n";
+        Logger::get_instance().log_error(e);
     }
 
     return 0;

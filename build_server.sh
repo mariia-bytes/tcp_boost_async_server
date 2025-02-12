@@ -1,16 +1,26 @@
 #!/bin/bash
 
-# remove async_server (the compiled binary from a previous run)
-# and clients_log.txt (log file from previous execution) if they exist
+# Remove previous build artifacts
 rm -f async_server clients_log.txt
+rm -rf build  # Remove old build directory if it exists
 
-# compile async_server
-g++ -std=c++23 -pthread -o async_server async_server.cpp
+# Create a new build directory
+mkdir -p build
+cd build || exit
+
+# Run CMake to generate build files
+cmake ..
+
+# Compile the project
+cmake --build .
 
 # Check if compilation was successful
 if [ $? -eq 0 ]; then
     echo "Compilation successful: async_server created."
+    mv async_server ..
 else
     echo "Compilation failed."
     exit 1
 fi
+
+cd ..

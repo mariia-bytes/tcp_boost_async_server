@@ -1,0 +1,22 @@
+[2025-02-10 15:35:47.167620] [info]: (Connection_Handler::retrive_client_id()): Client connected: 127.0.0.1:54056
+[2025-02-10 15:35:47.168079] [debug]: Async_File_Writer::update_data : Current snapshot size: 0
+[2025-02-10 15:35:47.168114] [debug]: Client_Manager::add_client : Client #1 added to the map: [127.0.0.1:54056]
+[2025-02-10 15:35:47.168128] [debug]: (Client_Manager::add_client()): Current clients: 1
+[2025-02-10 15:35:47.168256] [info]: 
+Message sent to client #1: Hello from Server! Your unique ID is #1
+[2025-02-10 15:35:47.168361] [info]: Async_File_Writer::write_to_file(): File is open clients_log.txt
+[2025-02-10 15:35:47.168407] [info]: (Async_File_Writer::write_to_file()): Client info {Client #1 : [127.0.0.1:54056]} is written to file clients_log.txt
+[2025-02-10 15:35:47.168423] [info]: (Async_File_Writer::write_to_file()): Mark client as logged
+[2025-02-10 15:35:54.649693] [debug]: (Client_Manager::remove_client()): Client #1 removed : [127.0.0.1:54056]
+[2025-02-10 15:35:54.649855] [debug]: (Client_Manager::remove_client): Current clients: 0
+[2025-02-10 15:35:57.175388] [info]: (Connection_Handler::retrive_client_id()): Client connected: 127.0.0.1:39184
+[2025-02-10 15:35:57.175548] [debug]: Async_File_Writer::update_data : Current snapshot size: 1
+[2025-02-10 15:35:57.175639] [debug]: Client_Manager::add_client : Client #2 added to the map: [127.0.0.1:39184]
+[2025-02-10 15:35:57.175695] [debug]: (Client_Manager::add_client()): Current clients: 1
+[2025-02-10 15:35:57.175804] [info]: Async_File_Writer::write_to_file(): File is open clients_log.txt
+[2025-02-10 15:35:57.175852] [info]: (Async_File_Writer::write_to_file()): Client info {Client #2 : [127.0.0.1:39184]} is written to file clients_log.txt
+[2025-02-10 15:35:57.175872] [info]: (Async_File_Writer::write_to_file()): Mark client as logged
+[2025-02-10 15:35:57.176104] [info]: 
+Message sent to client #2: Hello from Server! Your unique ID is #2
+[2025-02-10 15:36:01.902869] [debug]: (Client_Manager::remove_client()): Client #2 removed : [127.0.0.1:39184]
+[2025-02-10 15:36:01.902992] [debug]: (Client_Manager::remove_client): Current clients: 0

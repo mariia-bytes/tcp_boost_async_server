@@ -2,3 +2,4 @@ build/
 async_server
 async_client
 clients_log.txt
+server_log_*.txt

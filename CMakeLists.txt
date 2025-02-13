@@ -10,6 +10,10 @@ find_package(Boost REQUIRED COMPONENTS system filesystem log log_setup thread)
 # Add the executable
 add_executable(async_server 
     async_server.cpp
+    Server.cpp
+    Connection_Handler.cpp
+    Client_Manager.cpp
+    Async_File_Writer.cpp
     Logger.cpp)
 
 # Link Boost libraries

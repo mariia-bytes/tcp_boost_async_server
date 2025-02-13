@@ -1,43 +1,39 @@
-#ifndef CONNECTION_HANDLER_CPP
-#define CONNECTION_HANDLER_CPP
+#ifndef CONNECTION_HANDLER_H
+#define CONNECTION_HANDLER_H
 
-#include <iostream>
-#include <boost/asio.hpp>
-#include <boost/bind/bind.hpp>
 #include <boost/enable_shared_from_this.hpp>
-
-unsigned short port = 55000; // default port
-
-using namespace boost::asio;
-using ip::tcp;
+#include "Client_Manager.h"
 
 class Connection_Handler : public boost::enable_shared_from_this<Connection_Handler> {
 private: 
-    tcp::socket connection_socket;
-    std::string message = "Hello from Server!\n";
-    enum { max_length = 1024 };
-    char data[max_length];
-
+    boost::asio::ip::tcp::socket connection_socket;
+    std::string client_id; // unique identifier for the client (IP:port)
+    Client_Manager& client_manager; 
+    unsigned int unique_client_number; // client number assigned by Client_Manager
+    std::string message = "Hello from Server! Your unique ID is #"; // message to clients
+    boost::asio::streambuf read_buffer; // dynamic buffer to read from the socket
 public:
     typedef boost::shared_ptr<Connection_Handler> pointer;
 
-    Connection_Handler(boost::asio::io_context& io_context);
 
+public:
+    Connection_Handler(boost::asio::io_context& io_context, Client_Manager& manager);
+    ~Connection_Handler();
+        
     // create a shared pointer
-    static Connection_Handler::pointer create(boost::asio::io_context& io_context) {
-        return pointer(new Connection_Handler(io_context));
-    }
+    static pointer create(boost::asio::io_context& io_context, Client_Manager& manager);
 
     // access socket
-    tcp::socket& socket();
+    boost::asio::ip::tcp::socket& socket();   
 
     void start();
-    
-    void handle_read(const boost::system::error_code& err, size_t bytes_transferred);
-    
 
-    void handle_write(const boost::system::error_code& err, size_t bytes_transferred);
+    void retrieve_client_id(); 
+
+private:
+    void do_read();
+
+    void handle_read(const boost::system::error_code& err, std::size_t bytes_transferred);
 };
 
-#endif // CONNECTION_HANDLER_CPP
-
+#endif // CONNECTION_HANDLER_H

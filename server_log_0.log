@@ -1,1 +1,0 @@
-[2025-02-12 16:05:34.336729] [error]: Exception: bind: Permission denied [system:13 at /usr/local/include/boost/asio/detail/reactive_socket_service.hpp:161 in function 'bind']

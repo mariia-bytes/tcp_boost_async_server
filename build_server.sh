@@ -1,20 +1,21 @@
 #!/bin/bash
 
-# Remove previous build artifacts
-rm -f async_server clients_log.txt
-rm -rf build  # Remove old build directory if it exists
+# remove previous build artifacts
+rm -f async_server
+rm -rf build  # remove old build directory if it exists
+rm -rf logs # remove old logs difectory if it exists
 
-# Create a new build directory
+# create a new build directory
 mkdir -p build
 cd build || exit
 
-# Run CMake to generate build files
+# cun CMake to generate build files
 cmake ..
 
-# Compile the project
+# compile the project
 cmake --build .
 
-# Check if compilation was successful
+# check if compilation was successful
 if [ $? -eq 0 ]; then
     echo "Compilation successful: async_server created."
     mv async_server ..

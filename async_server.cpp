@@ -1,12 +1,10 @@
 #include <thread>
-
 #include "Server.h"
 
 
 // global variables for default
 unsigned short port = 55000; // default port
 std::string ip_address = "127.0.0.1"; // default IP address
-std::string file_path = "clients_log.txt"; // default file path to write clients
 
 
 int main(int argc, char* argv[]) {
@@ -27,7 +25,10 @@ int main(int argc, char* argv[]) {
         // create a thread pool
         unsigned int num_threads = std::max(1u, std::thread::hardware_concurrency());
         std::vector<std::thread> thread_pool;
-
+        
+        // path to save the clients log
+        std::string file_path = std::filesystem::current_path().string() + "/logs/clients_log.txt";
+        
         // create and start the server
         Server server(io_context, ip_address, port, file_path);
 

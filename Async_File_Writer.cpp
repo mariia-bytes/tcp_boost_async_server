@@ -2,7 +2,8 @@
 
 Async_File_Writer::Async_File_Writer(boost::asio::io_context& context, const std::string& path) 
         : io_context(context), strand(context.get_executor()), file_path(path) {
-        Logger::get_instance().log_info("Async File Writer initialized");
+        std::filesystem::create_directories(std::filesystem::path(file_path).parent_path());
+        Logger::get_instance().log_debug("Async File Writer initialized.File path: " + file_path);
     }
 
 
@@ -37,7 +38,7 @@ Async_File_Writer::Async_File_Writer(boost::asio::io_context& context, const std
 
         std::ofstream file(file_path, std::ios::app);  // open file in append mode
         if (file.is_open()) {
-            Logger::get_instance().log_info("(Async_File_Writer::write_to_file()) : File is open {" + file_path + "}");
+            Logger::get_instance().log_info("(Async_File_Writer::write_to_file()) : Writing to file {" + file_path + "}");
             for (const auto& [client_id, client_number] : new_clients) {
                 file << "Client #" << client_number << " : [" << client_id << "]\n";
                 Logger::get_instance().log_info("(Async_File_Writer::write_to_file()) : Client info {Client #" + std::to_string(client_number) + " : [" + client_id + "]} is written to file " + file_path);

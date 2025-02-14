@@ -3,7 +3,7 @@
 
 Client_Manager::Client_Manager(boost::asio::io_context& io_context, const std::string& file_path)
         : file_writer(io_context, file_path) {
-            Logger::get_instance().log_info("Client Manager initialized");
+            Logger::get_instance().log_debug("Client Manager initialized");
         }
 
     // add a new client

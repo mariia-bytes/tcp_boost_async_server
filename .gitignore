@@ -1,5 +1,4 @@
 build/
+logs/
 async_server
 async_client
-clients_log.txt
-server_log_*

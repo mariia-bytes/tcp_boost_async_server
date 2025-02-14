@@ -4,7 +4,7 @@
 
 Connection_Handler::Connection_Handler(boost::asio::io_context& io_context, Client_Manager& manager) 
         : connection_socket(io_context), client_manager(manager) {
-            Logger::get_instance().log_info("Connection Handler initialized");
+            Logger::get_instance().log_debug("Connection Handler initialized");
     }
         
     // create a shared pointer

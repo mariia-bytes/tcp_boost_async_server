@@ -9,20 +9,18 @@ Logger::Logger() {
     init_logging();
 }
 
-/*
+
 void Logger::init_logging() {
-    if (!boost::log::core::get()->get_logging_enabled()) {
-        boost::log::add_file_log("app.log");
-        boost::log::core::get()->set_filter(boost::log::trivial::severity >= boost::log::trivial::info);
-        boost::log::add_common_attributes();
-        BOOST_LOG_TRIVIAL(info) << "Logging initialized";
-    }
-}
-*/
-void Logger::init_logging() {
+    // define log dir
+    std::string log_dir = std::filesystem::current_path().string() + "/logs";
+    std::filesystem::create_directories(log_dir);
+
+    // defibe log file path
+    std::string log_file = log_dir + "/server_log_%N.log";
+
     // file logging
     boost::log::add_file_log(
-        boost::log::keywords::file_name = "server_log_%N.log",
+        boost::log::keywords::file_name = log_file,
         boost::log::keywords::rotation_size = 10 * 1024 * 1024, // max 10 MB per file
         boost::log::keywords::auto_flush = true,
         boost::log::keywords::format = "[%TimeStamp%] [%Severity%]: %Message%"
@@ -36,7 +34,7 @@ void Logger::init_logging() {
         boost::log::trivial::severity >= boost::log::trivial::debug
     );
 
-    BOOST_LOG_TRIVIAL(info) << "Logging initialized";
+    BOOST_LOG_TRIVIAL(debug) << "Logging initialized";
 }
 
 
@@ -55,10 +53,3 @@ void Logger::log_error(const std::exception& e) {
 void Logger::log_debug(const std::string& message) {
     BOOST_LOG_TRIVIAL(debug) << message;
 }
-
-
-    
-
-   
-
-

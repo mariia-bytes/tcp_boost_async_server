@@ -1,12 +1,10 @@
 #include "Server.h"
 #include <iostream>
 
-// export std::string file_path;
-
 Server::Server(boost::asio::io_context& io_context, const std::string& ip_address, const int port, const std::string& file_path) 
         : server_acceptor(io_context, boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address(ip_address), port)),
           client_manager(io_context, file_path) {
-            Logger::get_instance().log_info("Server initialized on " + ip_address + " : " + std::to_string(port));
+            Logger::get_instance().log_debug("Server initialized on " + ip_address + " : " + std::to_string(port));
             start_accept();
     }
 

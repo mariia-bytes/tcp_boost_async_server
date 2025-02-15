@@ -18,7 +18,7 @@ private:
     std::mutex snapshot_mutex; // protects clients snapshot    
 
 public:
-    Async_File_Writer(boost::asio::io_context& context, const std::string& path);
+    Async_File_Writer(boost::asio::io_context& context);
     ~Async_File_Writer() = default;
 
     void update_data(const std::map<std::string, unsigned int>& clients);

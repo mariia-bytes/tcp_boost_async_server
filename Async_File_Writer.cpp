@@ -1,8 +1,10 @@
 #include "Async_File_Writer.h"
 
-Async_File_Writer::Async_File_Writer(boost::asio::io_context& context, const std::string& path) 
-        : io_context(context), strand(context.get_executor()), file_path(path) {
-        std::filesystem::create_directories(std::filesystem::path(file_path).parent_path());
+Async_File_Writer::Async_File_Writer(boost::asio::io_context& context) 
+        : io_context(context), strand(context.get_executor()) {
+        std::string log_dir = std::filesystem::current_path().string() + "/logs";
+        std::filesystem::create_directories(log_dir);
+        file_path = log_dir + "/clients_log.txt";
         Logger::get_instance().log_debug("Async File Writer initialized.File path: " + file_path);
     }
 

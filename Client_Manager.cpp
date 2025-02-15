@@ -1,8 +1,8 @@
 #include "Client_Manager.h"
 #include "Connection_Handler.h"
 
-Client_Manager::Client_Manager(boost::asio::io_context& io_context, const std::string& file_path)
-        : file_writer(io_context, file_path) {
+Client_Manager::Client_Manager(boost::asio::io_context& io_context)
+        : file_writer(io_context) {
             Logger::get_instance().log_debug("Client Manager initialized");
         }
 

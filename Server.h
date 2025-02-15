@@ -14,9 +14,9 @@ private:
     std::atomic<bool> is_waiting = true; // flag to control print "waiting..."
     
     void start_accept();
-// #include <chrono>
+
 public:
-    Server(boost::asio::io_context& io_context, const std::string& ip_address, const int port, const std::string& file_path);
+    Server(boost::asio::io_context& io_context, const std::string& ip_address, const int port);
     ~Server() = default;
 
     void handle_accept(Connection_Handler::pointer connection, const boost::system::error_code& err);

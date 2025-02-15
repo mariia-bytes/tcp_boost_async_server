@@ -16,7 +16,7 @@ private:
     Async_File_Writer file_writer;
    
 public:
-    Client_Manager(boost::asio::io_context& io_context, const std::string& file_path);
+    Client_Manager(boost::asio::io_context& io_context);
     ~Client_Manager() = default;
 
     // add a new client

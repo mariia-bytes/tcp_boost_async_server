@@ -1,9 +1,9 @@
 #include "Server.h"
 #include <iostream>
 
-Server::Server(boost::asio::io_context& io_context, const std::string& ip_address, const int port, const std::string& file_path) 
+Server::Server(boost::asio::io_context& io_context, const std::string& ip_address, const int port) 
         : server_acceptor(io_context, boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address(ip_address), port)),
-          client_manager(io_context, file_path) {
+          client_manager(io_context) {
             Logger::get_instance().log_debug("Server initialized on " + ip_address + " : " + std::to_string(port));
             start_accept();
     }

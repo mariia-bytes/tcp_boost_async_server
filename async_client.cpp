@@ -55,6 +55,11 @@ public:
                     std::cout << "Server> " << message << std::endl;
                 } else {
                     std::cerr << "Error reading message: " << ec.message() << std::endl;
+                    if (ec == boost::asio::error::eof) {
+                        std::cout << "Connection closed by the server.\n";
+                        std::cout << "\nShutting down the client...\n";
+                        close_connection();
+                    }                   
                 }
             });
     }

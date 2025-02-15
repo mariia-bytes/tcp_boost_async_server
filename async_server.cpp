@@ -26,11 +26,8 @@ int main(int argc, char* argv[]) {
         unsigned int num_threads = std::max(1u, std::thread::hardware_concurrency());
         std::vector<std::thread> thread_pool;
         
-        // path to save the clients log
-        std::string file_path = std::filesystem::current_path().string() + "/logs/clients_log.txt";
-        
         // create and start the server
-        Server server(io_context, ip_address, port, file_path);
+        Server server(io_context, ip_address, port);
 
         // handling signal for graceful shutdown
         boost::asio::signal_set signals(io_context, SIGINT, SIGTERM);

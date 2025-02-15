@@ -4,7 +4,7 @@
 
 Connection_Handler::Connection_Handler(boost::asio::io_context& io_context, Client_Manager& manager) 
         : connection_socket(io_context), client_manager(manager) {
-            Logger::get_instance().log_debug("Connection Handler initialized");
+        Logger::get_instance().log_debug("Connection Handler initialized");
     }
         
     // create a shared pointer
@@ -54,12 +54,16 @@ Connection_Handler::Connection_Handler(boost::asio::io_context& io_context, Clie
     }
 
     void Connection_Handler::retrieve_client_id() {
+        // auto client_number_opt = client_manager.get_client_number(client_id);
+        // unique_client_number = client_number_opt.value();
         try { 
             if (connection_socket.is_open()) {
                 auto endpoint = connection_socket.remote_endpoint();
                 client_id = endpoint.address().to_string() + ":" + std::to_string(endpoint.port());
                 std::cout << "\nClient connected: " << client_id << "\n";
-                Logger::get_instance().log_info("(Connection_Handler::retrive_client_id()) : Client connected: [" + client_id + "]");
+                // std::cout << "\nClient connected: " << client_id << ". Client number: #" << unique_client_number << "\n";
+                Logger::get_instance().log_info("(Connection_Handler::retrive_client_id()) : Client connected: [" 
+                                                + client_id + "\n");
             } else {
                 Logger::get_instance().log_error("(Connection_Handler::retrive_client_id()) : Socket is not open; unable to retrieve client ID");
             }

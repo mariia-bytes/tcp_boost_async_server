@@ -7,7 +7,7 @@
 class Connection_Handler : public boost::enable_shared_from_this<Connection_Handler> {
 private: 
     boost::asio::ip::tcp::socket connection_socket;
-    std::string client_id; // unique identifier for the client (IP:port)
+    std::string client_id; // unique identifier for the client (string "IP:port")
     Client_Manager& client_manager; 
     unsigned int unique_client_number; // client number assigned by Client_Manager
     std::string message = "Hello from Server! Your unique ID is #"; // message to clients
@@ -20,14 +20,16 @@ public:
     Connection_Handler(boost::asio::io_context& io_context, Client_Manager& manager);
     ~Connection_Handler();
         
-    // create a shared pointer
+    // create shared pointer
     static pointer create(boost::asio::io_context& io_context, Client_Manager& manager);
 
     // access socket
     boost::asio::ip::tcp::socket& socket();   
 
+    // send greeting and then read client message
     void start();
 
+    // compose client IP and port into client ID (string "ID:port")
     void retrieve_client_id(); 
 
 private:

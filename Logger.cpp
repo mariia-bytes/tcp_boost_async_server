@@ -1,15 +1,17 @@
 #include "Logger.h"
 
+// retrieves the singleton instance of the Logger
 Logger& Logger::get_instance() {
     static Logger instance;
     return instance;
 }
 
+// constructor: Initializes the logging system
 Logger::Logger() {
     init_logging();
 }
 
-
+// sets up file logging and configures logging attributes
 void Logger::init_logging() {
     // define log dir
     std::string log_dir = std::filesystem::current_path().string() + "/logs";
@@ -37,19 +39,22 @@ void Logger::init_logging() {
     BOOST_LOG_TRIVIAL(debug) << "Logging initialized";
 }
 
-
+// logs an info message
 void Logger::log_info(const std::string& message) {
     BOOST_LOG_TRIVIAL(info) << message;
 }
 
+// logs an error message
 void Logger::log_error(const std::string& message) {
     BOOST_LOG_TRIVIAL(error) << message;
 }
 
+// logs an exception message, extracting its description
 void Logger::log_error(const std::exception& e) {
     BOOST_LOG_TRIVIAL(error) << "Exception: " << e.what();
 }
 
+// logs a debug message
 void Logger::log_debug(const std::string& message) {
     BOOST_LOG_TRIVIAL(debug) << message;
 }

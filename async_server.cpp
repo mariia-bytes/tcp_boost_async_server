@@ -2,7 +2,7 @@
 #include "Server.h"
 
 
-// global variables for default
+// global variables for default configurations
 unsigned short port = 55000; // default port
 std::string ip_address = "127.0.0.1"; // default IP address
 
@@ -22,14 +22,14 @@ int main(int argc, char* argv[]) {
     try {
         boost::asio::io_context io_context;
 
-        // create a thread pool
+        // determine the number of threads for the thread pool
         unsigned int num_threads = std::max(1u, std::thread::hardware_concurrency());
         std::vector<std::thread> thread_pool;
         
         // create and start the server
         Server server(io_context, ip_address, port);
 
-        // handling signal for graceful shutdown
+        // handle termination signals for graceful shutdown
         boost::asio::signal_set signals(io_context, SIGINT, SIGTERM);
         signals.async_wait([&io_context](const boost::system::error_code&, int) {
             std::cout << "\n\nShutting down the server..." << std::endl;
@@ -37,12 +37,12 @@ int main(int argc, char* argv[]) {
             io_context.stop();
         });
 
-        // post work to the thread pool
+        // launch worker threads to run the io_context event loop
         for (unsigned int i = 0; i < num_threads; i++) {
             thread_pool.emplace_back([&io_context]() { io_context.run(); });
         }
 
-        // wait till all threads are done
+        // wait for all threads to complete execution before exiting
         for (auto& thread : thread_pool) {
             thread.join();
         }

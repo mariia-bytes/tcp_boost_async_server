@@ -8,12 +8,22 @@
 
 class Connection_Handler;
 
+/**
+ * @class Client_Manager
+ * @brief Manages client connections, providing functionality to add, remove, and track clients.
+ *
+ * The Client_Manager class maintains a thread-safe map of connected clients, each identified by a unique ID.
+ * It also provides methods to generate unique client IDs, retrieve client information, and check connection status.
+ * Additionally, it logs client-related events and updates client data using an asynchronous file writer.
+ *
+ * @note This class is designed to be used in an asynchronous networked environment.
+ */
 class Client_Manager {
 private:
-    std::map<std::string, std::pair<unsigned int, boost::shared_ptr<Connection_Handler>>> clients; // map of connected clients
-    std::mutex clients_mutex; // protection of the clients map
-    std::atomic<unsigned int> client_id_counter {0}; // unique client number counter
-    Async_File_Writer file_writer;
+    std::map<std::string, std::pair<unsigned int, boost::shared_ptr<Connection_Handler>>> clients; /**< Map of connected clients (client ID -> (unique client number, connection handler)) */
+    std::mutex clients_mutex; /**< Mutex to protect access to the clients map */
+    std::atomic<unsigned int> client_id_counter {0}; /**< Atomic counter for generating unique client numbers */
+    Async_File_Writer file_writer; /**< Asynchronous file write for logging client data */
    
 public:
     Client_Manager(boost::asio::io_context& io_context);

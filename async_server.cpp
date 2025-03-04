@@ -4,7 +4,7 @@
 
 // global variables for default configurations
 unsigned short port = 55000; // default port
-std::string ip_address = "127.0.0.1"; // default IP address
+std::string ip_address = "0.0.0.0"; // default IP address
 
 
 int main(int argc, char* argv[]) {

@@ -22,9 +22,12 @@ COPY async_server.cpp CMakeLists.txt build_server.sh \
 
 # make build_server.sh executable and run it
 RUN chmod +x /async_server/build_server.sh && /async_server/build_server.sh
+# RUN mkdir build && cd build && \
+#    cmake .. && \
+#    make
 
 # expose the port the server will run on
 EXPOSE 55000
 
-# run server app executable
-# CMD ["/async_server/async_server"]
+# run the server executable when the container starts
+CMD ["./async_server"]

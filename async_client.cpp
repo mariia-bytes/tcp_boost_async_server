@@ -1,12 +1,13 @@
 #include <iostream>
 #include <boost/asio.hpp>
 #include <string>
+#include <thread>
 
 using namespace boost::asio;
 using ip::tcp;
 
 //default IP address and port
-std::string ip_address = "127.0.0.1";
+std::string ip_address = "0.0.0.0";
 unsigned short port = 55000;
 
 class Client {
@@ -23,8 +24,10 @@ public:
         // read server's greeting
         read_message();
 
-        // run the I/O context to process asynchronous operations
-        io_context_.run();
+        // io_context_.run();
+
+        // run the context I/O to process asynchronous operations in a separate thread
+        io_thread_ = std::thread([this]() { io_context_.run(); });
     }
 
     void send_message(const std::string& message) {
@@ -32,12 +35,14 @@ public:
 
         // asynchronously send the message to the server
         boost::asio::async_write(socket_, boost::asio::buffer(msg),
-            [&](const boost::system::error_code& ec, std::size_t) {
+            [this, message](const boost::system::error_code& ec, std::size_t bytes_transferred) {
                 if (ec) {
                     std::cerr << "Error sending message: " << ec.message() << std::endl;
-                } else {
+                } else {                    
+                    std::cout << "Message sent to server: " << message 
+                          << " (Bytes transferred: " << bytes_transferred << ")\n";
                     // after sending, immediately attempt to read the response
-                    read_message();
+                    // read_message();
                 }
             });
     }
@@ -87,12 +92,17 @@ public:
     void close_connection() {
         std::cout << "\nClosing the connection..." << std::endl;
         socket_.close();
+        io_context_.stop();
+        if (io_thread_.joinable()) {
+            io_thread_.join();
+        }
     }
 
 private:
     boost::asio::io_context io_context_;
     boost::asio::ip::tcp::resolver resolver_;
     boost::asio::ip::tcp::socket socket_;
+    std::thread io_thread_; // thread to run io_context
 };
 
 int main(int argc, char* argv[]) {
@@ -109,7 +119,13 @@ int main(int argc, char* argv[]) {
         Client client(ip_address, port);
 
         // srart chatting with the server
-        client.chat();
+        // client.chat();
+
+        client.send_message("Hello from client!");
+
+        // wait to allow async operations to complete
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        
 
         // close the connection when done
         client.close_connection();

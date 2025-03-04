@@ -13,7 +13,7 @@ WORKDIR /async_client
 # copy source code into the container
 COPY async_client.cpp /async_client/
 
-RUN g++ -std=c++17 -o async_client async_client.cpp
+RUN g++ -std=c++17 -o async_client async_client.cpp -pthread
 
 # run client app executable
 # CMD ["/async_client/async_client"]

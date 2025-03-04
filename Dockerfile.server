@@ -1,0 +1,30 @@
+FROM ubuntu:22.04
+
+# install dependencies (g++, Boost, cmake, make)
+RUN apt-get update && apt-get install -y \
+    build-essential \    
+    libboost-all-dev \
+    cmake \
+    g++ \
+    make \
+    && rm -rf /var/lib/apt/lists/*
+
+# set the working directory
+WORKDIR /async_server
+
+# copy source code and build script into the container
+COPY async_server.cpp CMakeLists.txt build_server.sh \
+     Server.h Server.cpp \
+     Connection_Handler.h Connection_Handler.cpp \
+     Client_Manager.h Client_Manager.cpp \
+     Async_File_Writer.h Async_File_Writer.cpp \
+     Logger.h Logger.cpp /async_server/
+
+# make build_server.sh executable and run it
+RUN chmod +x /async_server/build_server.sh && /async_server/build_server.sh
+
+# expose the port the server will run on
+EXPOSE 55000
+
+# run server app executable
+# CMD ["/async_server/async_server"]

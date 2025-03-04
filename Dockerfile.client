@@ -1,0 +1,19 @@
+FROM ubuntu:22.04
+
+# install dependencies (g++, Boost, cmake, make)
+RUN apt-get update && apt-get install -y \
+    build-essential \    
+    libboost-all-dev \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# set the working directory
+WORKDIR /async_client
+
+# copy source code into the container
+COPY async_client.cpp /async_client/
+
+RUN g++ -std=c++17 -o async_client async_client.cpp
+
+# run client app executable
+# CMD ["/async_client/async_client"]

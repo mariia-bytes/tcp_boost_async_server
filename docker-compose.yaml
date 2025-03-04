@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  server:
+    image: async-server
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+    - "55000:55000"
+    command: ./async_server
+
+  client:
+    image: async-client
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    command: ./async_client
+    network_mode: host
+    depends_on:
+      - server
